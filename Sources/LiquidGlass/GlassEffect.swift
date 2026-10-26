@@ -86,7 +86,7 @@ struct GlassRegistryReporter: View {
 /// Splits the availability check out of `body` so both branches compile on the
 /// same SDK, which keeps the Ventura floor working while still calling the
 /// native API where it exists.
-private struct GlassEffectBody<S: Shape>: View {
+private struct GlassEffectBody<S: Shape, Content: View>: View {
     let content: Content
     let material: LiquidGlassMaterial
     let shape: GlassShape

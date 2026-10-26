@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import AppKit
 import LiquidGlassCore
 
 /// The three material variants, matching Apple's `Glass` type.
@@ -16,7 +17,7 @@ public struct LiquidGlassMaterial: Equatable, Sendable {
 
     var kind: Kind
     var tintColor: RGBColor?
-    var isInteractive: Bool
+    var isInteractive: Bool = false
 
     /// The default material: adaptive, tinted by the system, interactive only
     /// where the caller asks for it.

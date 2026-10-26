@@ -129,7 +129,21 @@ public enum GlassMath {
 
     /// The reference shader's cheap hash, used for the micro-distortion noise.
     public static func hash(_ p: LGPoint) -> Double {
-        let v = sin(p.x * 127.1 + p.y * 311.7) * 43758.5453
-        return v - v.rounded(.down)
+        // The reference evaluates this at `precision highp float`, so every
+        // intermediate is a 32-bit float. Doing the arithmetic in `Double`
+        // changes `sin`'s argument in its last bits, and multiplying by
+        // 43758.5453 turns that into a different `fract()` branch, so the
+        // noise value can differ by up to 1.0. Matching the reference's
+        // precision keeps the port on the same branch.
+        //
+        // The pattern still cannot be matched exactly: `sin` itself is
+        // implementation-defined, and Swift's differs from a GPU's in the last
+        // bits. That is why `distortion` (the only option that reads this
+        // noise) shows a small residual divergence in the cross-check while
+        // every other option matches to within a few levels.
+        let x = Float(p.x)
+        let y = Float(p.y)
+        let v = sin(Float(127.1) * x + Float(311.7) * y) * Float(43758.5453)
+        return Double(v - v.rounded(.down))
     }
 }

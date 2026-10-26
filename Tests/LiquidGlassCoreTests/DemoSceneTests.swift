@@ -46,8 +46,27 @@ final class DemoSceneTests: XCTestCase {
         let expected = [
             "hero", "components", "merged-cluster", "magnifier", "button-states",
             "overlap", "panel-row", "spectrum-refraction", "starfield-specular",
-            "bevel-modes", "bezel-width", "large-surface",
+            "bevel-modes", "bezel-width", "large-surface", "native-blur-lighting",
         ]
         XCTAssertEqual(DemoScenes.all.map(\.name), expected)
+    }
+
+    /// The `nativeBlur` lighting pass must show a lit rim, not a flat panel.
+    ///
+    /// This is the scene that guards the bug where a 1x1 backdrop collapsed the
+    /// whole render to one pixel, so a regression shows up here as a nearly
+    /// uniform image.
+    func testNativeBlurLightingSceneHasAVisibleGradient() {
+        let image = DemoScenes.nativeBlurLighting.render(scale: 1)
+        var minV = 1.0
+        var maxV = 0.0
+        for y in stride(from: 0, to: image.height, by: 3) {
+            for x in stride(from: 0, to: image.width, by: 3) {
+                let v = image.color(x: x, y: y).r
+                minV = Swift.min(minV, v)
+                maxV = Swift.max(maxV, v)
+            }
+        }
+        XCTAssertGreaterThan(maxV - minV, 0.2, "the additive lighting pass collapsed")
     }
 }

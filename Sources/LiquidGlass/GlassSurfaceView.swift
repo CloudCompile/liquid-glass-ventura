@@ -151,7 +151,7 @@ final class OpticsNSView: NSView {
 
     override var isOpaque: Bool { false }
 
-    func configure(config: GlassConfig, shape: GlassShape, source: GlassOpticsView.Source) {
+    fileprivate func configure(config: GlassConfig, shape: GlassShape, source: GlassOpticsView.Source) {
         self.config = config
         self.shape = shape
         self.source = source

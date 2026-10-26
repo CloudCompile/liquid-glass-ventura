@@ -40,7 +40,7 @@ python3 scripts/make-contact-sheet.py          # needs Pillow
 
 ### Everything at a glance
 
-Twelve scenes, all rendered by `liquidglass-render`:
+Thirteen scenes, all rendered by `liquidglass-render`:
 
 ![Contact sheet of every demo scene](docs/screenshots/contact-sheet.png)
 
@@ -117,6 +117,16 @@ them turns into a funhouse mirror.
 
 ![Large surface](docs/screenshots/large-surface.png)
 
+### Backdrop-independent lighting
+
+When a surface has no backdrop to sample — the `.nativeBlur` path the SwiftUI
+and AppKit layers use on Ventura — only the lighting terms are rendered and then
+added on top of the system blur. This is the pass that a 1x1 stand-in backdrop
+used to collapse to a single pixel, flattening the rim and specular gradient on
+every surface that used it.
+
+![Backdrop-independent lighting pass](docs/screenshots/native-blur-lighting.png)
+
 ---
 
 ## Demos
@@ -145,7 +155,7 @@ watch each term of the model change the material.
 ./scripts/verify-crosscheck.sh
 ```
 
-This renders the same ten cases through this port and through the real
+This renders the same cases through this port and through the real
 `@ybouane/liquidglass` in headless Chromium, samples 37 pixels per case, and
 fails if any channel is more than 2/255 off. Current result:
 
@@ -155,18 +165,30 @@ fails if any channel is more than 2/255 off. Current result:
 [PASS] blur               37 samples, worst delta 1
 [PASS] tint               37 samples, worst delta 0
 [PASS] chroma             37 samples, worst delta 2
+[PASS] chroma-only        37 samples, worst delta 0
+[PASS] distort-only       37 samples, worst delta 2
 [PASS] dome               37 samples, worst delta 1
 [PASS] shadow             37 samples, worst delta 1
 [PASS] opacity            37 samples, worst delta 2
 [PASS] sharp              37 samples, worst delta 0
 [PASS] small-pill         37 samples, worst delta 2
 
-compared 370 samples across 10 cases, tolerance 2
+skipped 1 deliberate-divergence case(s): no-ref-alpha
+compared 444 samples across 12 cases, tolerance 2
 PASS: every sample within 2 of the reference implementation
 ```
 
-Four of the ten cases are pixel-exact; the rest differ by at most 2/255 in one
-channel, which is float-rounding noise.
+Most cases are pixel-exact; the rest differ by at most 2/255 in one channel,
+which is float-rounding noise. The residual on `distort-only` (and therefore on
+`chroma`, which mixes it in) comes from `sin`: the shader's noise uses a
+`fract(sin(...) * 43758.5453)` hash, and `sin` is implementation-defined, so a
+GPU's result differs from Swift's in the last bits. Every other option matches.
+
+The comparison is also run over *every* pixel, not just the sample points, by
+`liquidglass-render --crosscheck-dump` plus a small diff script; that is how
+defects confined to a corner or a bevel band are caught. `no-ref-alpha` is
+excluded because it deliberately exercises straight-alpha compositing rather
+than the reference's premultiplied form.
 
 ---
 
@@ -332,7 +354,7 @@ Sources/
 ```
 
 The two layers exist so the optics are testable without a Mac. `LiquidGlassCore`
-is 110 tests plus the cross-check harness; `LiquidGlass` is a thin shell that
+is 114 tests plus the cross-check harness; `LiquidGlass` is a thin shell that
 feeds it a backdrop and draws the result.
 
 ## Credits

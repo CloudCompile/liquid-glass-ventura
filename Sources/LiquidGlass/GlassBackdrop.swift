@@ -122,7 +122,7 @@ extension RGBAImage {
     /// Draw a `CGImage` into a straight-alpha buffer of the requested size,
     /// scaling it to fill (aspect-fill) exactly as the reference library's
     /// background cover mode does.
-    convenience init?(cgImage: CGImage, width: Int, height: Int) {
+    init?(cgImage: CGImage, width: Int, height: Int) {
         guard width > 0, height > 0, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         let drawn: Bool = pixels.withUnsafeMutableBytes { buffer -> Bool in

@@ -36,6 +36,7 @@ public enum DemoScenes {
         magnifierOnly,
         bezelComparison,
         largeSurface,
+        nativeBlurLighting,
     ]
 
     /// The component set the SwiftUI layer exposes, laid out the way the demo
@@ -579,6 +580,80 @@ public enum DemoScenes {
             )
         ))
         scene.glassIndices.append(scene.layers.count - 1)
+        return scene
+    }
+
+    /// The `.nativeBlur` path the SwiftUI and AppKit layers use on Ventura.
+    ///
+    /// With no backdrop to sample, those layers hand the renderer a 1x1 black
+    /// image and composite the result additively over the system blur, so only
+    /// the lighting terms survive. That stand-in used to collapse the whole
+    /// render to a single pixel, which flattened the rim and specular gradient
+    /// on every surface that used it. This scene reproduces the pass, so the
+    /// image would be a flat black rectangle if the bug came back.
+    public static let nativeBlurLighting = DemoScene(
+        name: "native-blur-lighting",
+        summary: "The backdrop-independent lighting pass, composited over a blur"
+    ) { scale in
+        let size = LGSize(width: 900, height: 420)
+        let config = GlassConfig(
+            blurAmount: 0,
+            refraction: 0.62,
+            chromAberration: 0.12,
+            edgeHighlight: 0.6,
+            specular: 0.75,
+            fresnel: 0.9,
+            cornerRadius: 40,
+            zRadius: 36,
+            shadowOpacity: 0
+        )
+
+        // A representative slice of a mesh gradient, blurred hard and dimmed,
+        // standing in for what `NSVisualEffectView` puts behind the panel. It
+        // is dimmed so the additive lighting below stays in range instead of
+        // saturating to white.
+        var backdrop = Wallpaper.mesh(size: size, scale: scale, seed: 0xB10B, blobs: 7)
+        backdrop = SoftwareGlassRenderer.blur(backdrop, amount: 1.0)
+        for y in 0..<backdrop.height {
+            for x in 0..<backdrop.width {
+                let c = backdrop.color(x: x, y: y)
+                backdrop.setColor(x: x, y: y, RGBAColor(r: c.r * 0.22, g: c.g * 0.22, b: c.b * 0.24, a: 1))
+            }
+        }
+
+        // The panel is rendered against a 1x1 black stand-in and added on top.
+        let frame = LGRect(x: 150, y: 90, width: 600, height: 240)
+        let pad = glassShadowPad
+        let boxW = Int(((frame.width + pad * 2) * scale).rounded())
+        let boxH = Int(((frame.height + pad * 2) * scale).rounded())
+        let stand_in = RGBAImage(width: 1, height: 1, fill: RGBAColor(r: 0, g: 0, b: 0, a: 1))
+        let lighting = SoftwareGlassRenderer(backdrop: stand_in)
+            .renderPanel(config: config, size: frame.size, scale: scale)
+
+        var canvas = RGBAImage(width: backdrop.width, height: backdrop.height)
+        canvas.composite(backdrop, at: LGPoint(x: 0, y: 0))
+        let origin = LGPoint(
+            x: (frame.x - pad) * scale,
+            y: (frame.y - pad) * scale
+        )
+        // Additive, matching `CGBlendMode.plusLighter` in the AppKit layer.
+        for y in 0..<boxH {
+            for x in 0..<boxW {
+                let ty = Int(origin.y) + y
+                let tx = Int(origin.x) + x
+                guard ty >= 0, ty < canvas.height, tx >= 0, tx < canvas.width else { continue }
+                let src = lighting.color(x: x, y: y)
+                let dst = canvas.color(x: tx, y: ty)
+                canvas.setColor(x: tx, y: ty, RGBAColor(
+                    r: min(dst.r + src.r * src.a, 1),
+                    g: min(dst.g + src.g * src.a, 1),
+                    b: min(dst.b + src.b * src.a, 1),
+                    a: 1
+                ))
+            }
+        }
+        var scene = GlassScene(bounds: LGRect(origin: .zero, size: size), scale: scale)
+        scene.layers.append(.image(canvas, frame: LGRect(origin: .zero, size: size)))
         return scene
     }
 

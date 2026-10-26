@@ -148,12 +148,29 @@ public struct SoftwareGlassRenderer {
     /// - Returns: an image the size of the backdrop, ready to composite over
     ///   the scene at the panel's padded origin.
     public func renderPanel(config: GlassConfig, size: LGSize, scale: Double = 1) -> RGBAImage {
-        let w = backdrop.width
-        let h = backdrop.height
-        var out = RGBAImage(width: w, height: h)
-        guard w > 0, h > 0, size.width > 0, size.height > 0 else { return out }
+        guard backdrop.width > 0, backdrop.height > 0, size.width > 0, size.height > 0 else {
+            return RGBAImage(width: 0, height: 0)
+        }
 
-        let blurred = Self.blur(backdrop, amount: config.blurAmount)
+        // A 1x1 backdrop is a flat colour stand-in: the `.color` backdrop, or
+        // the black backdrop used when the lighting is composited over the
+        // system blur. The panel's geometry comes from `size` and `scale`, so
+        // the stand-in is expanded to the padded box before sampling. Sampling
+        // a 1x1 image directly would run the whole loop over a single pixel and
+        // collapse the rim and specular gradient to one flat value.
+        let source: RGBAImage
+        if backdrop.width == 1 && backdrop.height == 1 {
+            let boxW = Int(((size.width + glassShadowPad * 2) * scale).rounded())
+            let boxH = Int(((size.height + glassShadowPad * 2) * scale).rounded())
+            source = RGBAImage(width: max(boxW, 1), height: max(boxH, 1), fill: backdrop.color(x: 0, y: 0))
+        } else {
+            source = backdrop
+        }
+
+        let w = source.width
+        let h = source.height
+        var out = RGBAImage(width: w, height: h)
+        let blurred = Self.blur(source, amount: config.blurAmount)
 
         let dpr = scale
         let panelW = size.width * dpr
@@ -247,9 +264,9 @@ public struct SoftwareGlassRenderer {
                 }
 
                 let sharp = RGBAColor(
-                    r: fetch(backdrop, baseU + caX, baseV + caY).r,
-                    g: fetch(backdrop, baseU, baseV).g,
-                    b: fetch(backdrop, baseU - caX, baseV - caY).b,
+                    r: fetch(source, baseU + caX, baseV + caY).r,
+                    g: fetch(source, baseU, baseV).g,
+                    b: fetch(source, baseU - caX, baseV - caY).b,
                     a: 1
                 )
                 let blurSample = RGBAColor(

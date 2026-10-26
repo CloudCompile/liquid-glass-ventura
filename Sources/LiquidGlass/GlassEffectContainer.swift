@@ -176,7 +176,9 @@ private struct MergedGlassView: NSViewRepresentable {
     let cluster: GlassCluster
 
     func makeNSView(context: Context) -> MergedGlassNSView {
-        let view = MergedGlassNSView()
+        // Explicit frame: the class overrides `init(frame:)`, so it does not
+        // inherit `NSView()`.
+        let view = MergedGlassNSView(frame: .zero)
         view.configure(cluster: cluster)
         return view
     }
@@ -196,9 +198,9 @@ final class MergedGlassNSView: NSView {
     private var config: GlassConfig = .standard
     private var backdrop: GlassBackdrop = .nativeBlur
     private var panelPath = CGPath(rect: .zero, transform: nil)
-    private var image: CGImage?
     private var pending = false
     private let blurView = NSVisualEffectView()
+    private let opticsView = MergedOpticsView()
     private let maskLayer = CAShapeLayer()
 
     private static let queue = DispatchQueue(label: "com.liquidglass.merged", qos: .userInitiated)
@@ -214,6 +216,10 @@ final class MergedGlassNSView: NSView {
         blurView.wantsLayer = true
         blurView.layer?.mask = maskLayer
         addSubview(blurView)
+        // Added after the blur so it composites above it. A view's own
+        // `draw(_:)` output sits *behind* its subviews, so the optics cannot
+        // live in `MergedGlassNSView.draw(_:)` while the blur is a subview.
+        addSubview(opticsView)
     }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
@@ -230,13 +236,17 @@ final class MergedGlassNSView: NSView {
             transform: nil
         )
         maskLayer.path = panelPath
-        image = nil
+        opticsView.panelPath = panelPath
+        opticsView.isNativeBackdrop = isNativeBackdrop
+        opticsView.image = nil
         needsDisplay = true
     }
 
     override func layout() {
         super.layout()
         blurView.frame = bounds
+        opticsView.frame = bounds
+        opticsView.panelPath = panelPath
         maskLayer.frame = bounds
         maskLayer.path = panelPath
         // AppKit views are bottom-up, the same as a `CGPath` built from a
@@ -270,29 +280,10 @@ final class MergedGlassNSView: NSView {
             context.restoreGState()
         }
 
-        if image == nil && !pending {
+        if opticsView.image == nil && !pending {
             pending = true
             startRender()
         }
-
-        guard let image else { return }
-        let pad = CGFloat(glassShadowPad)
-        let target = CGRect(
-            x: -pad, y: -pad,
-            width: bounds.width + pad * 2, height: bounds.height + pad * 2
-        )
-        context.saveGState()
-        // Clip to the union so the panel takes the merged silhouette.
-        context.addPath(panelPath)
-        context.clip()
-        context.translateBy(x: 0, y: target.height)
-        context.scaleBy(x: 1, y: -1)
-        context.interpolationQuality = .high
-        if isNativeBackdrop {
-            context.setBlendMode(.plusLighter)
-        }
-        context.draw(image, in: target)
-        context.restoreGState()
     }
 
     private func startRender() {
@@ -333,11 +324,46 @@ final class MergedGlassNSView: NSView {
                 .renderPanel(config: renderConfig, size: size, scale: Double(scale))
             let cg = GlassBitmap.cgImage(from: shaded)
             DispatchQueue.main.async {
-                self.image = cg
+                self.opticsView.image = cg
                 self.pending = false
-                self.needsDisplay = true
             }
         }
+    }
+}
+
+/// Draws the shaded optics for a merged panel.
+///
+/// This is a separate view rather than a branch of `MergedGlassNSView.draw(_:)`
+/// because a layer-backed view's own drawing composites *behind* its subviews,
+/// and the system blur it must sit on top of is a subview.
+private final class MergedOpticsView: NSView {
+    var panelPath = CGPath(rect: .zero, transform: nil)
+    var isNativeBackdrop = true
+    var image: CGImage? {
+        didSet { needsDisplay = true }
+    }
+
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let image, let context = NSGraphicsContext.current?.cgContext else { return }
+        let pad = CGFloat(glassShadowPad)
+        let target = CGRect(
+            x: -pad, y: -pad,
+            width: bounds.width + pad * 2, height: bounds.height + pad * 2
+        )
+        context.saveGState()
+        // Clip to the union so the panel takes the merged silhouette.
+        context.addPath(panelPath)
+        context.clip()
+        context.translateBy(x: 0, y: target.height)
+        context.scaleBy(x: 1, y: -1)
+        context.interpolationQuality = .high
+        if isNativeBackdrop {
+            context.setBlendMode(.plusLighter)
+        }
+        context.draw(image, in: target)
+        context.restoreGState()
     }
 }
 

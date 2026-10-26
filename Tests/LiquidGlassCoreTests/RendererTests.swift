@@ -143,6 +143,79 @@ final class RendererTests: XCTestCase {
         XCTAssertEqual(panel.height, paddedHeight)
     }
 
+    // A 1x1 backdrop is how a flat colour is passed in: the `.color` backdrop,
+    // and the black stand-in the AppKit layer uses when the lighting is
+    // composited over the system blur. The panel's geometry comes from `size`
+    // and `scale`, so the output must be the padded box, not one pixel.
+    func testFlatColourBackdropRendersTheWholePaddedBox() {
+        let size = LGSize(width: 200, height: 80)
+        let scale = 2.0
+        let flat = RGBAImage(width: 1, height: 1, fill: RGBAColor(r: 0, g: 0, b: 0, a: 1))
+        let panel = SoftwareGlassRenderer(backdrop: flat)
+            .renderPanel(config: .standard, size: size, scale: scale)
+
+        let pad = glassShadowPad
+        XCTAssertEqual(panel.width, Int((size.width + pad * 2) * scale))
+        XCTAssertEqual(panel.height, Int((size.height + pad * 2) * scale))
+    }
+
+    /// The lighting must vary across the panel. Before the fix the 1x1
+    /// backdrop collapsed the render to a single pixel, so every surface drew
+    /// one flat colour and the rim and specular highlights disappeared.
+    func testFlatColourBackdropKeepsTheLightingGradient() {
+        let size = LGSize(width: 200, height: 80)
+        let flat = RGBAImage(width: 1, height: 1, fill: RGBAColor(r: 0, g: 0, b: 0, a: 1))
+        var config = GlassConfig.standard
+        config.shadowOpacity = 0
+        let panel = SoftwareGlassRenderer(backdrop: flat)
+            .renderPanel(config: config, size: size, scale: 2)
+
+        XCTAssertGreaterThan(variance(panel), 0.0001, "the rim and specular gradient collapsed to a flat colour")
+
+        // And the brightest point must beat the darkest by a clear margin.
+        var lo = 1.0
+        var hi = 0.0
+        for y in 0..<panel.height {
+            for x in 0..<panel.width {
+                let v = panel.color(x: x, y: y).r
+                lo = min(lo, v)
+                hi = max(hi, v)
+            }
+        }
+        XCTAssertGreaterThan(hi - lo, 0.1)
+    }
+
+    /// The flat-colour expansion must agree with an explicitly sized backdrop
+    /// of the same colour, which is the case the rest of the suite covers.
+    func testFlatColourBackdropMatchesAnExplicitlySizedOne() {
+        let size = LGSize(width: 120, height: 60)
+        let scale = 2.0
+        let pad = glassShadowPad
+        let boxW = Int((size.width + pad * 2) * scale)
+        let boxH = Int((size.height + pad * 2) * scale)
+        let colour = RGBAColor(r: 0.25, g: 0.5, b: 0.75, a: 1)
+
+        var config = GlassConfig.standard
+        config.shadowOpacity = 0.3
+        let flat = SoftwareGlassRenderer(backdrop: RGBAImage(width: 1, height: 1, fill: colour))
+            .renderPanel(config: config, size: size, scale: scale)
+        let explicit = SoftwareGlassRenderer(backdrop: RGBAImage(width: boxW, height: boxH, fill: colour))
+            .renderPanel(config: config, size: size, scale: scale)
+
+        XCTAssertEqual(flat.width, explicit.width)
+        XCTAssertEqual(flat.height, explicit.height)
+        for y in stride(from: 0, to: explicit.height, by: 7) {
+            for x in stride(from: 0, to: explicit.width, by: 7) {
+                let a = flat.color(x: x, y: y)
+                let b = explicit.color(x: x, y: y)
+                XCTAssertEqual(a.r, b.r, accuracy: 1.0 / 255)
+                XCTAssertEqual(a.g, b.g, accuracy: 1.0 / 255)
+                XCTAssertEqual(a.b, b.b, accuracy: 1.0 / 255)
+                XCTAssertEqual(a.a, b.a, accuracy: 1.0 / 255)
+            }
+        }
+    }
+
     private func variance(_ image: RGBAImage) -> Double {
         var sum = 0.0
         var sumSq = 0.0

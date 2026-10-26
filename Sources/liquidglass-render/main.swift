@@ -65,6 +65,19 @@ if options["crosscheck"] != nil {
     exit(0)
 }
 
+// Dump every cross-check case as a full PNG, so the harness can diff all
+// pixels rather than a fixed set of sample points.
+if let dir = options["crosscheck-dump"] {
+    do {
+        let count = try CrossCheck.dumpPanels(to: URL(fileURLWithPath: dir))
+        print("dumped \(count) panel(s) to \(dir)")
+        exit(0)
+    } catch {
+        FileHandle.standardError.write(Data("error: \(error)\n".utf8))
+        exit(1)
+    }
+}
+
 if options["list"] != nil {
     for scene in scenes {
         print("\(scene.name)\t\(scene.summary)")

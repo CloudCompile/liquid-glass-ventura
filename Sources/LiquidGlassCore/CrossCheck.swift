@@ -50,6 +50,14 @@ public enum CrossCheck {
         Case(name: "chroma", frame: LGRect(x: 100, y: 80, width: 200, height: 120), config: GlassConfig(
             chromAberration: 0.5, distortion: 0.35
         )),
+        // Isolates the two terms the combined `chroma` case mixes, so a
+        // divergence can be attributed to one of them.
+        Case(name: "chroma-only", frame: LGRect(x: 100, y: 80, width: 200, height: 120), config: GlassConfig(
+            chromAberration: 0.5
+        )),
+        Case(name: "distort-only", frame: LGRect(x: 100, y: 80, width: 200, height: 120), config: GlassConfig(
+            distortion: 0.35
+        )),
         Case(name: "dome", frame: LGRect(x: 100, y: 80, width: 200, height: 120), config: GlassConfig(
             refraction: 0.9, cornerRadius: 60, zRadius: 60, shadowOpacity: 0.35, shadowSpread: 16, bevelMode: .dome
         )),
@@ -169,6 +177,25 @@ public enum CrossCheck {
             }
             return (testCase.name, testCase.expectsParity, canvasSize, rows)
         }
+    }
+
+    /// Write every case's comparable panel to `directory` as a PNG.
+    ///
+    /// The 37-sample diff in `samples()` is fast but can only see the points it
+    /// looks at. Dumping the whole panel lets the harness compare every pixel,
+    /// which is how a defect confined to one region (a corner, a bevel band, a
+    /// shadow ramp) is caught rather than missed.
+    ///
+    /// - Returns: the number of files written.
+    @discardableResult
+    public static func dumpPanels(to directory: URL) throws -> Int {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for testCase in cases {
+            let (image, _) = renderPanel(testCase)
+            let name = testCase.name.replacingOccurrences(of: "/", with: "-")
+            try PNGEncoder.write(image, to: directory.appendingPathComponent("\(name).png"))
+        }
+        return cases.count
     }
 
     /// The case list as JSON, for the reference harness to consume.
